@@ -37,3 +37,4 @@ PROMPT.md contains the most important prompts used to generate the repo.
 When asked to commit:
 1. Append the key prompt(s) for this batch of changes to PROMPT.md under a new numbered heading.
 2. Include that same prompt text in the commit description.
+3. Run the pre-commit-ci agent (`make test`) before every commit. Block the commit if any tests fail.

@@ -8,3 +8,6 @@ Generate the allocator code for malloc and free mapping them to mmap. Make the c
 
 ### 3. Makefile and build directory
 Generate the Makefile and a build directory where the executables are stored.
+
+### 4. Tests
+Generate the tests for the malloc and free functions.
