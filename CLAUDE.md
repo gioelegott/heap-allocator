@@ -28,5 +28,12 @@ include/  → public headers
 tests/    → test cases
 client/   → demo client program
 
+## Documentation
+All functions and data structures must be documented using Doxygen-style comments (`/** ... */`). This applies to every new or modified function, struct, and public header.
+
 ## Reproducibility
 PROMPT.md contains the most important prompts used to generate the repo.
+
+When asked to commit:
+1. Append the key prompt(s) for this batch of changes to PROMPT.md under a new numbered heading.
+2. Include that same prompt text in the commit description.
