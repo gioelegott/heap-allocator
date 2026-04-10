@@ -11,3 +11,6 @@ Generate the Makefile and a build directory where the executables are stored.
 
 ### 4. Tests
 Generate the tests for the malloc and free functions.
+
+### 5. README and documentation
+Use the doc-commit-guardian agent to generate the README and update the CLAUDE.md so that this agent is used before a commit but after testing.

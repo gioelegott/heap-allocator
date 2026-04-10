@@ -12,7 +12,10 @@
  * the exact region later.
  *
  * @param size Number of usable bytes requested. If 0, returns NULL.
- * @return Pointer to the usable memory region, or NULL on failure.
+ * @return Pointer to the usable memory region, or NULL on failure or when
+ *         @p size is 0.
+ * @note Thread-safe: each call issues an independent mmap() syscall and
+ *       mutates no shared allocator state, so no lock is required.
  */
 void *malloc(size_t size)
 {
@@ -39,6 +42,9 @@ void *malloc(size_t size)
  * mapped size, then unmaps the entire region with munmap.
  *
  * @param ptr Pointer previously returned by malloc(). If NULL, no-op.
+ * @return void
+ * @note Thread-safe: each call unmaps an independent mmap region and
+ *       touches no shared allocator state.
  */
 void free(void *ptr)
 {
