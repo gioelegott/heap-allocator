@@ -17,3 +17,6 @@ Use the doc-commit-guardian agent to generate the README and update the CLAUDE.m
 
 ### 6. Profiling infrastructure
 Create a new folder containing the profiling infrastructure for malloc and free. The profiling should test different allocation/deallocation scenarios both single- and multi-threaded, with symmetric experiments across interleaved, batch FIFO, and batch LIFO free orders.
+
+### 7. sbrk allocator
+Generate a new allocator/deallocator using brk/sbrk. Use the same programming style as the existing malloc/free. The new allocator doesn't need to be thread-safe so ignore any type of locking mechanism.

@@ -76,6 +76,14 @@ The OS `mmap`/`munmap` syscalls are themselves thread-safe.
 This is the key trade-off of the baseline design: thread safety comes for free,
 but at the cost of memory reuse and the overhead of a syscall per allocation.
 
+### `sbrk_malloc` / `sbrk_free`
+
+The sbrk-backed allocator (`include/sbrk_allocator.h`) is a secondary
+implementation and is **not thread-safe**: the program break is a process-wide
+resource shared by all threads.  Its free strategy is also more limited —
+`sbrk_free()` only lowers the program break when the freed block sits at the
+top of the heap; otherwise the memory is abandoned until the process exits.
+
 ---
 
 ## File layout
@@ -83,9 +91,11 @@ but at the cost of memory reuse and the overhead of a syscall per allocation.
 ```
 heap-allocator/
 ├── include/
-│   └── allocator.h      # Public API: malloc() and free() declarations
+│   ├── allocator.h      # Public API: malloc() and free() declarations
+│   └── sbrk_allocator.h # Public API: sbrk_malloc() and sbrk_free() declarations
 ├── src/
-│   ├── allocator.c      # malloc() and free() implementation
+│   ├── allocator.c      # malloc() and free() implementation (mmap-backed)
+│   ├── sbrk_allocator.c # sbrk_malloc() and sbrk_free() implementation (not thread-safe)
 │   └── block.h          # block_header_t definition (internal)
 ├── tests/
 │   ├── test_basic.c     # Functional correctness tests
@@ -145,6 +155,7 @@ Prompts covered the following areas:
 3. Writing the `Makefile` and configuring the `build/` output directory.
 4. Generating the test suite (`test_basic.c`, `test_thread.c`).
 5. Creating the profiling infrastructure with symmetric interleaved, FIFO, and LIFO scenarios across single- and multi-threaded workloads.
+6. Implementing an alternative `sbrk`-backed allocator (`sbrk_malloc`/`sbrk_free`) as a non-thread-safe counterpart to the baseline.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.
