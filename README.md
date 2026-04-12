@@ -92,6 +92,9 @@ heap-allocator/
 │   └── test_thread.c    # Concurrent correctness test (8 threads)
 ├── client/
 │   └── main.c           # Minimal demo program
+├── profiling/
+│   ├── profile.c        # Allocation/deallocation benchmark scenarios
+│   └── timer.h          # Lightweight monotonic timer (prof_timer_t)
 ├── Makefile
 ├── PROMPT.md            # GenAI prompts used during development
 └── README.md
@@ -107,6 +110,9 @@ make
 
 # Run the full test suite
 make test
+
+# Build and run the profiler
+make profile
 
 # Remove all build artefacts
 make clean
@@ -138,6 +144,7 @@ Prompts covered the following areas:
 2. Implementing the baseline `malloc`/`free` backed by `mmap`.
 3. Writing the `Makefile` and configuring the `build/` output directory.
 4. Generating the test suite (`test_basic.c`, `test_thread.c`).
+5. Creating the profiling infrastructure with symmetric interleaved, FIFO, and LIFO scenarios across single- and multi-threaded workloads.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

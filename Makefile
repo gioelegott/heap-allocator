@@ -7,8 +7,9 @@ OBJ     = $(BUILD)/allocator.o
 
 TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread
 CLIENT  = $(BUILD)/client
+PROFILE = $(BUILD)/profile
 
-.PHONY: all test clean
+.PHONY: all test profile clean
 
 all: $(CLIENT)
 
@@ -26,6 +27,12 @@ $(BUILD)/test_thread: tests/test_thread.c $(OBJ) | $(BUILD)
 
 $(CLIENT): client/main.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
+
+$(PROFILE): profiling/profile.c $(OBJ) | $(BUILD)
+	$(CC) $(CFLAGS) $^ -o $@ -lpthread
+
+profile: $(PROFILE)
+	$(PROFILE)
 
 test: $(TESTS)
 	@for t in $(TESTS); do \
