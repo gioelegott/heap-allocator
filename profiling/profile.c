@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include "timer.h"
 #include "../include/allocator.h"
+#include "../include/sbrk_allocator.h"
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                        */
@@ -32,6 +33,16 @@ typedef enum {
 } free_order_t;
 
 /* ------------------------------------------------------------------ */
+/* Allocator function-pointer types                                     */
+/* ------------------------------------------------------------------ */
+
+/** @brief Signature of an allocator function (e.g. malloc, sbrk_malloc). */
+typedef void *(*alloc_fn_t)(size_t);
+
+/** @brief Signature of a deallocator function (e.g. free, sbrk_free). */
+typedef void  (*free_fn_t)(void *);
+
+/* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -45,7 +56,7 @@ typedef enum {
  */
 static void report(const char *label, int iters, double ms)
 {
-    printf("  %-52s  %8.2f ms  (%d ops, %.0f ns/op)\n",
+    printf("  %-58s  %8.2f ms  (%d ops, %.0f ns/op)\n",
            label, ms, iters, ms * 1e6 / iters);
 }
 
@@ -54,18 +65,24 @@ static void report(const char *label, int iters, double ms)
 /* ------------------------------------------------------------------ */
 
 /**
- * @brief Run a single-threaded allocation scenario.
+ * @brief Run a single-threaded allocation scenario with a given allocator.
  *
  * When @p size is 0 the scenario cycles through MIXED_SIZES on each
- * iteration. The @p order parameter selects whether allocations and
- * frees are interleaved or batched (FIFO or LIFO).
+ * iteration. The @p order parameter selects whether allocations and frees
+ * are interleaved or batched (FIFO or LIFO). The pointer array used for
+ * batch modes is allocated and freed with this project's own malloc/free
+ * (the mmap-backed allocator), not alloc_fn/free_fn, so the pointer
+ * bookkeeping does not perturb the allocator under test.
  *
- * @param iters  Number of alloc/free pairs.
- * @param size   Bytes per allocation, or 0 for mixed sizes.
- * @param order  Free-order strategy.
+ * @param iters     Number of alloc/free pairs.
+ * @param size      Bytes per allocation, or 0 for mixed sizes.
+ * @param order     Free-order strategy.
+ * @param alloc_fn  Allocator function to benchmark.
+ * @param free_fn   Deallocator matching @p alloc_fn.
  * @return Elapsed time in milliseconds, or -1 on allocation failure.
  */
-static double scenario_st(int iters, size_t size, free_order_t order)
+static double scenario_st(int iters, size_t size, free_order_t order,
+                           alloc_fn_t alloc_fn, free_fn_t free_fn)
 {
     void **ptrs = NULL;
 
@@ -79,18 +96,18 @@ static double scenario_st(int iters, size_t size, free_order_t order)
 
     if (order == ORDER_INTERLEAVED) {
         for (int i = 0; i < iters; i++) {
-            void *p = malloc(size ? size : MIXED_SIZES[i % MIXED_N]);
-            free(p);
+            void *p = alloc_fn(size ? size : MIXED_SIZES[i % MIXED_N]);
+            free_fn(p);
         }
     } else {
         for (int i = 0; i < iters; i++)
-            ptrs[i] = malloc(size ? size : MIXED_SIZES[i % MIXED_N]);
+            ptrs[i] = alloc_fn(size ? size : MIXED_SIZES[i % MIXED_N]);
         if (order == ORDER_FIFO)
             for (int i = 0; i < iters; i++)
-                free(ptrs[i]);
+                free_fn(ptrs[i]);
         else /* ORDER_LIFO */
             for (int i = iters - 1; i >= 0; i--)
-                free(ptrs[i]);
+                free_fn(ptrs[i]);
     }
 
     double ms = timer_elapsed_ms(&t);
@@ -99,18 +116,18 @@ static double scenario_st(int iters, size_t size, free_order_t order)
 }
 
 /* ------------------------------------------------------------------ */
-/* Multi-threaded scenarios                                             */
+/* Multi-threaded scenarios (mmap allocator only)                      */
 /* ------------------------------------------------------------------ */
 
 /** @brief Argument bundle passed to each worker thread. */
 typedef struct {
-    int          iters; /**< Number of alloc/free cycles to perform.     */
-    size_t       size;  /**< Allocation size in bytes, or 0 for mixed.   */
-    free_order_t order; /**< Free-order strategy.                        */
+    int          iters; /**< Number of alloc/free cycles to perform.   */
+    size_t       size;  /**< Allocation size in bytes, or 0 for mixed. */
+    free_order_t order; /**< Free-order strategy.                      */
 } worker_args_t;
 
 /**
- * @brief Thread worker mirroring scenario_st() for concurrent use.
+ * @brief Thread worker mirroring scenario_st() using the mmap allocator.
  *
  * @param arg Pointer to a worker_args_t.
  * @return NULL always.
@@ -171,18 +188,41 @@ static double run_mt(int iters, size_t size, free_order_t order)
 /* main                                                                 */
 /* ------------------------------------------------------------------ */
 
-/** @brief Macro to run the same experiment set for all three orders. */
-#define RUN_ALL_ORDERS(label_prefix, iters, size, total) do {          \
-    report(label_prefix " interleaved", (iters), scenario_st((iters), (size), ORDER_INTERLEAVED)); \
-    report(label_prefix " FIFO",        (iters), scenario_st((iters), (size), ORDER_FIFO));        \
-    report(label_prefix " LIFO",        (iters), scenario_st((iters), (size), ORDER_LIFO));        \
+/**
+ * @brief Run all three free-order variants of a single-threaded scenario.
+ *
+ * @param label_prefix  Prefix string for the report label.
+ * @param iters         Number of iterations.
+ * @param size          Allocation size (0 = mixed).
+ * @param alloc_fn      Allocator to benchmark.
+ * @param free_fn       Matching deallocator.
+ * @return void
+ */
+#define RUN_ALL_ORDERS(label_prefix, iters, size, alloc_fn, free_fn) do { \
+    report(label_prefix " interleaved", (iters),                          \
+           scenario_st((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn)); \
+    report(label_prefix " FIFO", (iters),                                 \
+           scenario_st((iters), (size), ORDER_FIFO,        alloc_fn, free_fn)); \
+    report(label_prefix " LIFO", (iters),                                 \
+           scenario_st((iters), (size), ORDER_LIFO,        alloc_fn, free_fn)); \
 } while (0)
 
-/** @brief Macro to run the MT experiment set for all three orders. */
-#define RUN_MT_ALL_ORDERS(label_prefix, iters, size, total) do {       \
-    report(label_prefix " interleaved", (total), run_mt((iters), (size), ORDER_INTERLEAVED)); \
-    report(label_prefix " FIFO",        (total), run_mt((iters), (size), ORDER_FIFO));        \
-    report(label_prefix " LIFO",        (total), run_mt((iters), (size), ORDER_LIFO));        \
+/**
+ * @brief Run all three free-order variants of a multi-threaded scenario.
+ *
+ * @param label_prefix  Prefix string for the report label.
+ * @param iters         Iterations per thread.
+ * @param size          Allocation size (0 = mixed).
+ * @param total         Total operations (threads × iters).
+ * @return void
+ */
+#define RUN_MT_ALL_ORDERS(label_prefix, iters, size, total) do {          \
+    report(label_prefix " interleaved", (total),                          \
+           run_mt((iters), (size), ORDER_INTERLEAVED));                    \
+    report(label_prefix " FIFO",        (total),                          \
+           run_mt((iters), (size), ORDER_FIFO));                           \
+    report(label_prefix " LIFO",        (total),                          \
+           run_mt((iters), (size), ORDER_LIFO));                           \
 } while (0)
 
 int main(void)
@@ -191,22 +231,31 @@ int main(void)
 
     printf("=== Heap Allocator Profile ===\n\n");
 
-    /* --- Single-threaded --- */
-    printf("Single-threaded (%d ops each):\n\n", ITERS);
+    /* --- mmap allocator: single-threaded --- */
+    printf("mmap allocator — single-threaded (%d ops each):\n\n", ITERS);
 
-    RUN_ALL_ORDERS("ST   16 B", ITERS, 16,           ITERS);    printf("\n");
-    RUN_ALL_ORDERS("ST  256 B", ITERS, 256,          ITERS);    printf("\n");
-    RUN_ALL_ORDERS("ST    4 KB", ITERS, 4096,        ITERS);    printf("\n");
-    RUN_ALL_ORDERS("ST    1 MB", ITERS, 1024*1024,   ITERS);    printf("\n");
-    RUN_ALL_ORDERS("ST  mixed (16/128/1K/8K)", ITERS, 0,ITERS);
+    RUN_ALL_ORDERS("mmap  ST   16 B", ITERS, 16,         malloc, free); printf("\n");
+    RUN_ALL_ORDERS("mmap  ST  256 B", ITERS, 256,        malloc, free); printf("\n");
+    RUN_ALL_ORDERS("mmap  ST    4 KB", ITERS, 4096,      malloc, free); printf("\n");
+    RUN_ALL_ORDERS("mmap  ST    1 MB", ITERS, 1024*1024, malloc, free); printf("\n");
+    RUN_ALL_ORDERS("mmap  ST  mixed (16/128/1K/8K)", ITERS, 0, malloc, free);
 
-    /* --- Multi-threaded --- */
-    printf("\nMulti-threaded (%d threads x %d ops = %d total):\n\n",
+    /* --- mmap allocator: multi-threaded --- */
+    printf("\nmmap allocator — multi-threaded (%d threads x %d ops = %d total):\n\n",
            MT_THREADS, MT_ITERS, total_mt);
 
-    RUN_MT_ALL_ORDERS("MT  256 B", MT_ITERS, 256,        total_mt); printf("\n");
-    RUN_MT_ALL_ORDERS("MT    4 KB", MT_ITERS, 4096,      total_mt); printf("\n");
-    RUN_MT_ALL_ORDERS("MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt);
+    RUN_MT_ALL_ORDERS("mmap  MT  256 B",              MT_ITERS, 256,  total_mt); printf("\n");
+    RUN_MT_ALL_ORDERS("mmap  MT    4 KB",             MT_ITERS, 4096, total_mt); printf("\n");
+    RUN_MT_ALL_ORDERS("mmap  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt);
+
+    /* --- sbrk allocator: single-threaded only (not thread-safe) --- */
+    printf("\nsbrk allocator — single-threaded (%d ops each):\n\n", ITERS);
+
+    RUN_ALL_ORDERS("sbrk  ST   16 B", ITERS, 16,         sbrk_malloc, sbrk_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk  ST  256 B", ITERS, 256,        sbrk_malloc, sbrk_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk  ST    4 KB", ITERS, 4096,      sbrk_malloc, sbrk_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk  ST    1 MB", ITERS, 1024*1024, sbrk_malloc, sbrk_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk  ST  mixed (16/128/1K/8K)", ITERS, 0, sbrk_malloc, sbrk_free);
 
     printf("\nDone.\n");
     return 0;

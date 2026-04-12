@@ -98,8 +98,9 @@ heap-allocator/
 │   ├── sbrk_allocator.c # sbrk_malloc() and sbrk_free() implementation (not thread-safe)
 │   └── block.h          # block_header_t definition (internal)
 ├── tests/
-│   ├── test_basic.c     # Functional correctness tests
-│   └── test_thread.c    # Concurrent correctness test (8 threads)
+│   ├── test_basic.c     # Functional correctness tests for malloc/free
+│   ├── test_thread.c    # Concurrent correctness test (8 threads)
+│   └── test_sbrk.c      # Functional correctness tests for sbrk_malloc/sbrk_free
 ├── client/
 │   └── main.c           # Minimal demo program
 ├── profiling/
@@ -139,6 +140,7 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 |-------------------------|----------------------------------------------------------------|
 | `build/test_basic`      | `malloc` returns non-NULL; `malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `free(NULL)` is a no-op; a 1 MiB allocation succeeds |
 | `build/test_thread`     | 8 threads each perform 64 `malloc`/write/verify/`free` cycles concurrently without data corruption |
+| `build/test_sbrk`       | `sbrk_malloc` returns non-NULL; `sbrk_malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `sbrk_free(NULL)` is a no-op; a 1 MiB allocation succeeds; LIFO free lowers the program break; FIFO free of a non-top block leaves the break unchanged |
 
 ---
 
@@ -156,6 +158,7 @@ Prompts covered the following areas:
 4. Generating the test suite (`test_basic.c`, `test_thread.c`).
 5. Creating the profiling infrastructure with symmetric interleaved, FIFO, and LIFO scenarios across single- and multi-threaded workloads.
 6. Implementing an alternative `sbrk`-backed allocator (`sbrk_malloc`/`sbrk_free`) as a non-thread-safe counterpart to the baseline.
+7. Adding the `test_sbrk.c` test suite and extending `profiling/profile.c` to benchmark both allocators via function pointers.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

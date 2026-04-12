@@ -8,7 +8,7 @@ OBJ      = $(BUILD)/allocator.o
 SBRK_SRC = src/sbrk_allocator.c
 SBRK_OBJ = $(BUILD)/sbrk_allocator.o
 
-TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread
+TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread $(BUILD)/test_sbrk
 CLIENT  = $(BUILD)/client
 PROFILE = $(BUILD)/profile
 
@@ -31,10 +31,13 @@ $(BUILD)/test_basic: tests/test_basic.c $(OBJ) | $(BUILD)
 $(BUILD)/test_thread: tests/test_thread.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@ -lpthread
 
+$(BUILD)/test_sbrk: tests/test_sbrk.c $(SBRK_OBJ) | $(BUILD)
+	$(CC) $(CFLAGS) $^ -o $@
+
 $(CLIENT): client/main.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
-$(PROFILE): profiling/profile.c $(OBJ) | $(BUILD)
+$(PROFILE): profiling/profile.c $(OBJ) $(SBRK_OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@ -lpthread
 
 profile: $(PROFILE)
