@@ -21,5 +21,8 @@ Create a new folder containing the profiling infrastructure for malloc and free.
 ### 7. sbrk allocator
 Generate a new allocator/deallocator using brk/sbrk. Use the same programming style as the existing malloc/free. The new allocator doesn't need to be thread-safe so ignore any type of locking mechanism.
 
+### 9. sbrk list allocator
+Create a new smarter sbrk_allocator that reclaims blocks even if they are not at the top of the heap. Do so with a list that keeps track of where each block is, their size, and if it has been freed or not. Again disregard any thread-safety mechanism for now.
+
 ### 8. Tests and profiling for sbrk allocator
 Add tests and profiling for the sbrk allocator.

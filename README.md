@@ -78,11 +78,22 @@ but at the cost of memory reuse and the overhead of a syscall per allocation.
 
 ### `sbrk_malloc` / `sbrk_free`
 
-The sbrk-backed allocator (`include/sbrk_allocator.h`) is a secondary
-implementation and is **not thread-safe**: the program break is a process-wide
-resource shared by all threads.  Its free strategy is also more limited —
-`sbrk_free()` only lowers the program break when the freed block sits at the
-top of the heap; otherwise the memory is abandoned until the process exits.
+The sbrk-backed allocator (`include/sbrk_allocator.h`) is **not thread-safe**:
+the program break is a process-wide resource shared by all threads.  Its free
+strategy is also limited — `sbrk_free()` only lowers the program break when
+the freed block sits at the top of the heap; otherwise the memory is abandoned
+until the process exits.
+
+### `sbrk_list_malloc` / `sbrk_list_free`
+
+The sbrk list allocator (`include/sbrk_list_allocator.h`) improves on the
+simple sbrk allocator by maintaining a singly-linked list of all allocated
+blocks inside the heap itself.  Each node stores the usable size and a free
+flag.  `sbrk_list_malloc()` performs a first-fit scan and reuses any
+sufficiently large free block without touching the program break.  If no
+suitable block is found the heap is extended via `sbrk(2)`.
+`sbrk_list_free()` marks the block free in the list; the program break is
+never lowered.  This allocator is also **not thread-safe**.
 
 ---
 
@@ -91,12 +102,14 @@ top of the heap; otherwise the memory is abandoned until the process exits.
 ```
 heap-allocator/
 ├── include/
-│   ├── allocator.h      # Public API: malloc() and free() declarations
-│   └── sbrk_allocator.h # Public API: sbrk_malloc() and sbrk_free() declarations
+│   ├── allocator.h           # Public API: malloc() and free() declarations
+│   ├── sbrk_allocator.h      # Public API: sbrk_malloc() and sbrk_free() declarations
+│   └── sbrk_list_allocator.h # Public API: sbrk_list_malloc() and sbrk_list_free() declarations
 ├── src/
-│   ├── allocator.c      # malloc() and free() implementation (mmap-backed)
-│   ├── sbrk_allocator.c # sbrk_malloc() and sbrk_free() implementation (not thread-safe)
-│   └── block.h          # block_header_t definition (internal)
+│   ├── allocator.c           # malloc() and free() implementation (mmap-backed)
+│   ├── sbrk_allocator.c      # sbrk_malloc() and sbrk_free() (simple, not thread-safe)
+│   ├── sbrk_list_allocator.c # sbrk_list_malloc() and sbrk_list_free() (free list, not thread-safe)
+│   └── block.h               # block_header_t definition (internal)
 ├── tests/
 │   ├── test_basic.c     # Functional correctness tests for malloc/free
 │   ├── test_thread.c    # Concurrent correctness test (8 threads)
@@ -159,6 +172,7 @@ Prompts covered the following areas:
 5. Creating the profiling infrastructure with symmetric interleaved, FIFO, and LIFO scenarios across single- and multi-threaded workloads.
 6. Implementing an alternative `sbrk`-backed allocator (`sbrk_malloc`/`sbrk_free`) as a non-thread-safe counterpart to the baseline.
 7. Adding the `test_sbrk.c` test suite and extending `profiling/profile.c` to benchmark both allocators via function pointers.
+8. Implementing `sbrk_list_malloc`/`sbrk_list_free`: a smarter sbrk-backed allocator with a singly-linked free list and first-fit block reuse.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.
