@@ -78,11 +78,13 @@ but at the cost of memory reuse and the overhead of a syscall per allocation.
 
 ### `sbrk_malloc` / `sbrk_free`
 
-The sbrk-backed allocator (`include/sbrk_allocator.h`) is **not thread-safe**:
-the program break is a process-wide resource shared by all threads.  Its free
-strategy is also limited — `sbrk_free()` only lowers the program break when
-the freed block sits at the top of the heap; otherwise the memory is abandoned
-until the process exits.
+The sbrk-backed allocator (`include/sbrk_allocator.h`) is **thread-safe by
+default**: a static `pthread_mutex_t` guards every access to the program
+break.  Thread safety can be compiled out by passing `-DTHREAD_SAFE=0`
+(or `make THREAD_SAFE=false`) when lower overhead is acceptable at the
+cost of safety.  Its free strategy is also limited — `sbrk_free()` only
+lowers the program break when the freed block sits at the top of the heap;
+otherwise the memory is abandoned until the process exits.
 
 ### `sbrk_list_malloc` / `sbrk_list_free`
 
@@ -95,8 +97,10 @@ suitable block is found the heap is extended via `sbrk(2)`.
 `sbrk_list_free()` marks the block free.  If the freed block is at the tail
 of the list it is unlinked and the program break is lowered via `sbrk(2)`;
 this reclaim cascades until a live block is reached or the list is empty.
-Non-tail blocks remain in the list for first-fit reuse.  This allocator is
-also **not thread-safe**.
+Non-tail blocks remain in the list for first-fit reuse.  Like the simple
+sbrk allocator, this allocator is **thread-safe by default** (mutex on
+every access to the free list and program break) and can be compiled
+without locking via `-DTHREAD_SAFE=0` / `make THREAD_SAFE=false`.
 
 ---
 
@@ -110,9 +114,10 @@ heap-allocator/
 │   └── sbrk_list_allocator.h # Public API: sbrk_list_malloc() and sbrk_list_free() declarations
 ├── src/
 │   ├── allocator.c           # malloc() and free() implementation (mmap-backed)
-│   ├── sbrk_allocator.c      # sbrk_malloc() and sbrk_free() (simple, not thread-safe)
-│   ├── sbrk_list_allocator.c # sbrk_list_malloc() and sbrk_list_free() (free list, not thread-safe)
-│   └── block.h               # block_header_t definition (internal)
+│   ├── sbrk_allocator.c      # sbrk_malloc() and sbrk_free() (simple, thread-safe by default)
+│   ├── sbrk_list_allocator.c # sbrk_list_malloc() and sbrk_list_free() (free list, thread-safe by default)
+│   ├── block.h               # block_header_t definition (internal)
+│   └── sbrk_lock.h           # Conditional pthread mutex macros for sbrk allocators (internal)
 ├── tests/
 │   ├── test_basic.c          # Functional correctness tests for malloc/free
 │   ├── test_thread.c         # Concurrent correctness test (8 threads)
@@ -180,6 +185,7 @@ Prompts covered the following areas:
 8. Implementing `sbrk_list_malloc`/`sbrk_list_free`: a smarter sbrk-backed allocator with a singly-linked free list and first-fit block reuse.
 9. Adding the `test_sbrk_list.c` test suite and extending `profiling/profile.c` to benchmark the sbrk list allocator.
 10. Updating `sbrk_list_free` to lower the program break on tail reclaim with cascade until the list is empty or a live block is found; extending the test suite with two new tail-reclaim tests.
+11. Adding conditional mutex support (`src/sbrk_lock.h`) to both sbrk allocators; thread safety is enabled by default and can be disabled with `THREAD_SAFE=false`.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

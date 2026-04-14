@@ -32,3 +32,6 @@ Add testing and profiling for the smarter sbrk allocator, similarly to how the b
 
 ### 11. Tail reclaim in sbrk list allocator
 Update the sbrk_list_allocator so that when the last block in the list is freed, it is removed from the list and the program break is lowered.
+
+### 12. Thread safety for sbrk allocators
+Add a locking mechanism to both sbrk allocators for thread safety. You should add a mutex whenever global structures are accessed. The thread safety mechanism should be designed such that it can be disabled with a define THREAD_SAFE=false which is by default true.

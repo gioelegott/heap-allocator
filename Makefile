@@ -2,6 +2,17 @@ CC      = gcc
 CFLAGS  = -std=c11 -Wall -Wextra -I include
 BUILD   = build
 
+# Thread-safety for sbrk allocators.
+# Enabled by default; pass THREAD_SAFE=false to compile it out.
+THREAD_SAFE ?= true
+ifeq ($(THREAD_SAFE),false)
+SBRK_CFLAGS  = $(CFLAGS) -DTHREAD_SAFE=0
+SBRK_LDFLAGS =
+else
+SBRK_CFLAGS  = $(CFLAGS) -pthread
+SBRK_LDFLAGS = -pthread
+endif
+
 SRC      = src/allocator.c
 OBJ      = $(BUILD)/allocator.o
 
@@ -25,11 +36,11 @@ $(BUILD):
 $(OBJ): $(SRC) src/block.h include/allocator.h | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(SBRK_OBJ): $(SBRK_SRC) src/block.h include/sbrk_allocator.h | $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(SBRK_OBJ): $(SBRK_SRC) src/block.h src/sbrk_lock.h include/sbrk_allocator.h | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) -c $< -o $@
 
-$(SBRK_LIST_OBJ): $(SBRK_LIST_SRC) include/sbrk_list_allocator.h | $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(SBRK_LIST_OBJ): $(SBRK_LIST_SRC) src/sbrk_lock.h include/sbrk_list_allocator.h | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) -c $< -o $@
 
 $(BUILD)/test_basic: tests/test_basic.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
@@ -38,16 +49,16 @@ $(BUILD)/test_thread: tests/test_thread.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@ -lpthread
 
 $(BUILD)/test_sbrk: tests/test_sbrk.c $(SBRK_OBJ) | $(BUILD)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
 
 $(BUILD)/test_sbrk_list: tests/test_sbrk_list.c $(SBRK_LIST_OBJ) | $(BUILD)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
 
 $(CLIENT): client/main.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
 $(PROFILE): profiling/profile.c $(OBJ) $(SBRK_OBJ) $(SBRK_LIST_OBJ) | $(BUILD)
-	$(CC) $(CFLAGS) $^ -o $@ -lpthread
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ -pthread $(SBRK_LDFLAGS)
 
 profile: $(PROFILE)
 	$(PROFILE)

@@ -14,8 +14,8 @@
  * @param size Number of usable bytes requested. If 0, returns NULL.
  * @return Pointer to the start of the usable memory region, or NULL on
  *         failure or when @p size is 0.
- * @note Not thread-safe: the free list and program break are process-wide
- *       resources with no locking.
+ * @note Thread-safe when compiled with THREAD_SAFE=1 (the default);
+ *       not thread-safe when THREAD_SAFE=0.
  */
 void *sbrk_list_malloc(size_t size);
 
@@ -31,8 +31,8 @@ void *sbrk_list_malloc(size_t size);
  * @param ptr Pointer previously returned by sbrk_list_malloc(). If NULL,
  *            no-op.
  * @return void
- * @note Not thread-safe: the free list is a process-wide resource with no
- *       locking.
+ * @note Thread-safe when compiled with THREAD_SAFE=1 (the default);
+ *       not thread-safe when THREAD_SAFE=0.
  */
 void sbrk_list_free(void *ptr);
 
