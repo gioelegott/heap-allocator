@@ -6,6 +6,7 @@
 #include "timer.h"
 #include "../include/allocator.h"
 #include "../include/sbrk_allocator.h"
+#include "../include/sbrk_list_allocator.h"
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                        */
@@ -256,6 +257,15 @@ int main(void)
     RUN_ALL_ORDERS("sbrk  ST    4 KB", ITERS, 4096,      sbrk_malloc, sbrk_free); printf("\n");
     RUN_ALL_ORDERS("sbrk  ST    1 MB", ITERS, 1024*1024, sbrk_malloc, sbrk_free); printf("\n");
     RUN_ALL_ORDERS("sbrk  ST  mixed (16/128/1K/8K)", ITERS, 0, sbrk_malloc, sbrk_free);
+
+    /* --- sbrk list allocator: single-threaded only (not thread-safe) --- */
+    printf("\nsbrk list allocator — single-threaded (%d ops each):\n\n", ITERS);
+
+    RUN_ALL_ORDERS("sbrk_list  ST   16 B", ITERS, 16,         sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk_list  ST  256 B", ITERS, 256,        sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk_list  ST    4 KB", ITERS, 4096,      sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk_list  ST    1 MB", ITERS, 1024*1024, sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_ALL_ORDERS("sbrk_list  ST  mixed (16/128/1K/8K)", ITERS, 0, sbrk_list_malloc, sbrk_list_free);
 
     printf("\nDone.\n");
     return 0;
