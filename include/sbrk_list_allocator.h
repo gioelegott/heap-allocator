@@ -22,9 +22,11 @@ void *sbrk_list_malloc(size_t size);
 /**
  * @brief Free a previously allocated block.
  *
- * Marks the block as free in the list so that a future sbrk_list_malloc()
- * call can reuse it.  The program break is never lowered; memory is only
- * reclaimed logically inside the process.
+ * Marks the block as free.  If the block is at the tail of the list it is
+ * removed and the program break is lowered via sbrk(2).  This reclaim
+ * cascades: after removing the tail, if the new tail is also free it is
+ * reclaimed too, until a live block or the empty list is reached.  Blocks
+ * that are not at the tail are kept in the list for first-fit reuse.
  *
  * @param ptr Pointer previously returned by sbrk_list_malloc(). If NULL,
  *            no-op.

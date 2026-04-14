@@ -92,8 +92,11 @@ blocks inside the heap itself.  Each node stores the usable size and a free
 flag.  `sbrk_list_malloc()` performs a first-fit scan and reuses any
 sufficiently large free block without touching the program break.  If no
 suitable block is found the heap is extended via `sbrk(2)`.
-`sbrk_list_free()` marks the block free in the list; the program break is
-never lowered.  This allocator is also **not thread-safe**.
+`sbrk_list_free()` marks the block free.  If the freed block is at the tail
+of the list it is unlinked and the program break is lowered via `sbrk(2)`;
+this reclaim cascades until a live block is reached or the list is empty.
+Non-tail blocks remain in the list for first-fit reuse.  This allocator is
+also **not thread-safe**.
 
 ---
 
@@ -155,7 +158,7 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 | `build/test_basic`      | `malloc` returns non-NULL; `malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `free(NULL)` is a no-op; a 1 MiB allocation succeeds |
 | `build/test_thread`     | 8 threads each perform 64 `malloc`/write/verify/`free` cycles concurrently without data corruption |
 | `build/test_sbrk`       | `sbrk_malloc` returns non-NULL; `sbrk_malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `sbrk_free(NULL)` is a no-op; a 1 MiB allocation succeeds; LIFO free lowers the program break; FIFO free of a non-top block leaves the break unchanged |
-| `build/test_sbrk_list`  | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit) |
+| `build/test_sbrk_list`  | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit); freeing the tail block lowers the program break; cascade reclaim of consecutive free tail blocks fully restores the break |
 
 ---
 
@@ -176,6 +179,7 @@ Prompts covered the following areas:
 7. Adding the `test_sbrk.c` test suite and extending `profiling/profile.c` to benchmark both allocators via function pointers.
 8. Implementing `sbrk_list_malloc`/`sbrk_list_free`: a smarter sbrk-backed allocator with a singly-linked free list and first-fit block reuse.
 9. Adding the `test_sbrk_list.c` test suite and extending `profiling/profile.c` to benchmark the sbrk list allocator.
+10. Updating `sbrk_list_free` to lower the program break on tail reclaim with cascade until the list is empty or a live block is found; extending the test suite with two new tail-reclaim tests.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

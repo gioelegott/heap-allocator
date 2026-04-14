@@ -89,9 +89,14 @@ void *sbrk_list_malloc(size_t size)
 /**
  * @brief Free a previously allocated block.
  *
- * Marks the block as free in the list so that a future sbrk_list_malloc()
- * call can reuse it.  The program break is never lowered; memory is only
- * reclaimed logically inside the process.
+ * Marks the block as free.  If the freed block is at the tail of the list,
+ * it is removed from the list and the program break is lowered via sbrk(2).
+ * This reclaim cascades: after removing the tail, if the new tail is also
+ * free it is reclaimed too, and so on, until a live block is reached or the
+ * list is empty.
+ *
+ * Blocks that are not at the tail are kept in the list and made available
+ * for reuse by a future sbrk_list_malloc() call.
  *
  * @param ptr Pointer previously returned by sbrk_list_malloc(). If NULL,
  *            no-op.
@@ -106,4 +111,26 @@ void sbrk_list_free(void *ptr)
 
     block_node_t *node = (block_node_t *)ptr - 1;
     node->free = 1;
+
+    /* Cascade: reclaim consecutive free blocks from the tail of the list. */
+    while (head != NULL) {
+        /* Walk to the tail, tracking the predecessor. */
+        block_node_t *prev = NULL;
+        block_node_t *tail = head;
+        while (tail->next != NULL) {
+            prev = tail;
+            tail = tail->next;
+        }
+
+        if (!tail->free)
+            break;
+
+        /* Unlink the tail and lower the program break. */
+        if (prev != NULL)
+            prev->next = NULL;
+        else
+            head = NULL;
+
+        sbrk(-(intptr_t)(sizeof(block_node_t) + tail->size));
+    }
 }

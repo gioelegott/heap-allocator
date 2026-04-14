@@ -29,3 +29,6 @@ Create a new smarter sbrk_allocator that reclaims blocks even if they are not at
 
 ### 10. Tests and profiling for sbrk list allocator
 Add testing and profiling for the smarter sbrk allocator, similarly to how the base sbrk allocator is tested/profiled.
+
+### 11. Tail reclaim in sbrk list allocator
+Update the sbrk_list_allocator so that when the last block in the list is freed, it is removed from the list and the program break is lowered.
