@@ -88,9 +88,10 @@ otherwise the memory is abandoned until the process exits.
 
 ### `opt_malloc` / `opt_free`
 
-The optimised allocator (`include/opt_allocator.h`) is a stub pending
-implementation.  It is **thread-safe by default** (same conditional mutex
-pattern as the sbrk allocators) and can be compiled without locking via
+The optimised allocator (`include/opt_allocator.h`) is an implicit free-list
+allocator with first-fit search, on-the-fly forward coalescing of adjacent free
+blocks, and block splitting.  It is **thread-safe by default** (same conditional
+mutex pattern as the sbrk allocators) and can be compiled without locking via
 `-DTHREAD_SAFE=0` / `make THREAD_SAFE=false`.
 
 ### `sbrk_list_malloc` / `sbrk_list_free`
@@ -124,7 +125,7 @@ heap-allocator/
 │   ├── allocator.c           # malloc() and free() implementation (mmap-backed)
 │   ├── sbrk_allocator.c      # sbrk_malloc() and sbrk_free() (simple, thread-safe by default)
 │   ├── sbrk_list_allocator.c # sbrk_list_malloc() and sbrk_list_free() (free list, thread-safe by default)
-│   ├── opt_allocator.c       # opt_malloc() and opt_free() (stub — implementation pending)
+│   ├── opt_allocator.c       # opt_malloc() and opt_free() (implicit free-list, first-fit, thread-safe by default)
 │   ├── block.h               # block_header_t definition (internal)
 │   └── sbrk_lock.h           # Conditional pthread mutex macros for sbrk allocators (internal)
 ├── tests/
@@ -160,7 +161,7 @@ make test
 # Build and run the profiler
 make profile
 
-# Build and run the opt allocator tests (stub — expected to fail until implemented)
+# Build and run the opt allocator tests (also run by make test)
 make test_opt
 
 # Remove all build artefacts
@@ -182,8 +183,8 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 | `build/test_sbrk_thread`     | 8 threads each perform 64 `sbrk_malloc`/write/verify/`sbrk_free` cycles concurrently without data corruption |
 | `build/test_sbrk_list`       | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit); freeing the tail block lowers the program break; cascade reclaim of consecutive free tail blocks fully restores the break |
 | `build/test_sbrk_list_thread`| 8 threads each perform 64 `sbrk_list_malloc`/write/verify/`sbrk_list_free` cycles concurrently without data corruption; exercises the shared free list under concurrent access |
-| `build/test_opt`             | `opt_malloc` returns non-NULL; `opt_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `opt_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation **(stub: expected to fail until implementation is complete)** |
-| `build/test_opt_thread`      | 8 threads each perform 64 `opt_malloc`/write/verify/`opt_free` cycles concurrently without data corruption **(stub: expected to fail until implementation is complete)** |
+| `build/test_opt`             | `opt_malloc` returns non-NULL; `opt_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `opt_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation |
+| `build/test_opt_thread`      | 8 threads each perform 64 `opt_malloc`/write/verify/`opt_free` cycles concurrently without data corruption |
 
 ---
 
@@ -207,7 +208,8 @@ Prompts covered the following areas:
 10. Updating `sbrk_list_free` to lower the program break on tail reclaim with cascade until the list is empty or a live block is found; extending the test suite with two new tail-reclaim tests.
 11. Adding conditional mutex support (`src/sbrk_lock.h`) to both sbrk allocators; thread safety is enabled by default and can be disabled with `THREAD_SAFE=false`.
 12. Adding multi-threaded test suites (`test_sbrk_thread.c`, `test_sbrk_list_thread.c`) and multi-threaded profiling sections to `profiling/profile.c` for both sbrk allocators; generalising `worker_args_t` and `RUN_MT_ALL_ORDERS` to accept allocator function pointers.
-13. Generating a template for `opt_malloc`/`opt_free` with stub implementation, full test suites (`test_opt.c`, `test_opt_thread.c`), ST and MT profiling sections, and Makefile integration; `make test_opt` is a separate target excluded from `make test` until the implementation is complete.
+13. Generating a template for `opt_malloc`/`opt_free` with stub implementation, full test suites (`test_opt.c`, `test_opt_thread.c`), ST and MT profiling sections, and Makefile integration.
+14. Implementing `opt_malloc`/`opt_free` as an implicit free-list allocator with first-fit search, on-the-fly forward coalescing of adjacent free blocks, block splitting, and alignment rounding; `make test_opt` is now also run by `make test`.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

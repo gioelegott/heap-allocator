@@ -41,3 +41,6 @@ Add the testing and profiling infrastructure for multi-threaded sbrk_allocator a
 
 ### 14. Optimal allocator template
 Generate a template for an optimal allocator and all the surrounding infrastructure, including testing and profiling. Leave the actual implementation empty.
+
+### 15. Optimal allocator implementation
+Implement opt_malloc and opt_free as an implicit free-list allocator with first-fit search, on-the-fly forward coalescing of adjacent free blocks, block splitting, alignment rounding via _Alignof, and sbrk-backed heap extension. Add comments and format correctly.

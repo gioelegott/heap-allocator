@@ -27,10 +27,9 @@ OPT_OBJ = $(BUILD)/opt_allocator.o
 
 TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread \
           $(BUILD)/test_sbrk $(BUILD)/test_sbrk_thread \
-          $(BUILD)/test_sbrk_list $(BUILD)/test_sbrk_list_thread
+          $(BUILD)/test_sbrk_list $(BUILD)/test_sbrk_list_thread \
+          $(BUILD)/test_opt $(BUILD)/test_opt_thread
 
-# opt allocator tests are built separately; excluded from 'make test'
-# until the implementation is complete.
 OPT_TESTS = $(BUILD)/test_opt $(BUILD)/test_opt_thread
 CLIENT  = $(BUILD)/client
 PROFILE = $(BUILD)/profile
