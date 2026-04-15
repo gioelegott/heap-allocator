@@ -35,3 +35,6 @@ Update the sbrk_list_allocator so that when the last block in the list is freed,
 
 ### 12. Thread safety for sbrk allocators
 Add a locking mechanism to both sbrk allocators for thread safety. You should add a mutex whenever global structures are accessed. The thread safety mechanism should be designed such that it can be disabled with a define THREAD_SAFE=false which is by default true.
+
+### 13. Multi-threaded tests and profiling for sbrk allocators
+Add the testing and profiling infrastructure for multi-threaded sbrk_allocator and sbrk_list_allocator. Use the infrastructure for testing and profiling the baseline allocator as a template.

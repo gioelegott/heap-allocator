@@ -121,8 +121,10 @@ heap-allocator/
 ├── tests/
 │   ├── test_basic.c          # Functional correctness tests for malloc/free
 │   ├── test_thread.c         # Concurrent correctness test (8 threads)
-│   ├── test_sbrk.c           # Functional correctness tests for sbrk_malloc/sbrk_free
-│   └── test_sbrk_list.c      # Functional correctness tests for sbrk_list_malloc/sbrk_list_free
+│   ├── test_sbrk.c               # Functional correctness tests for sbrk_malloc/sbrk_free
+│   ├── test_sbrk_thread.c        # Concurrent correctness test for sbrk_malloc/sbrk_free (8 threads)
+│   ├── test_sbrk_list.c          # Functional correctness tests for sbrk_list_malloc/sbrk_list_free
+│   └── test_sbrk_list_thread.c   # Concurrent correctness test for sbrk_list_malloc/sbrk_list_free (8 threads)
 ├── client/
 │   └── main.c           # Minimal demo program
 ├── profiling/
@@ -162,8 +164,10 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 |-------------------------|----------------------------------------------------------------|
 | `build/test_basic`      | `malloc` returns non-NULL; `malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `free(NULL)` is a no-op; a 1 MiB allocation succeeds |
 | `build/test_thread`     | 8 threads each perform 64 `malloc`/write/verify/`free` cycles concurrently without data corruption |
-| `build/test_sbrk`       | `sbrk_malloc` returns non-NULL; `sbrk_malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `sbrk_free(NULL)` is a no-op; a 1 MiB allocation succeeds; LIFO free lowers the program break; FIFO free of a non-top block leaves the break unchanged |
-| `build/test_sbrk_list`  | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit); freeing the tail block lowers the program break; cascade reclaim of consecutive free tail blocks fully restores the break |
+| `build/test_sbrk`            | `sbrk_malloc` returns non-NULL; `sbrk_malloc(0)` returns NULL; memory is writable; two allocations return distinct pointers; `sbrk_free(NULL)` is a no-op; a 1 MiB allocation succeeds; LIFO free lowers the program break; FIFO free of a non-top block leaves the break unchanged |
+| `build/test_sbrk_thread`     | 8 threads each perform 64 `sbrk_malloc`/write/verify/`sbrk_free` cycles concurrently without data corruption |
+| `build/test_sbrk_list`       | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit); freeing the tail block lowers the program break; cascade reclaim of consecutive free tail blocks fully restores the break |
+| `build/test_sbrk_list_thread`| 8 threads each perform 64 `sbrk_list_malloc`/write/verify/`sbrk_list_free` cycles concurrently without data corruption; exercises the shared free list under concurrent access |
 
 ---
 
@@ -186,6 +190,7 @@ Prompts covered the following areas:
 9. Adding the `test_sbrk_list.c` test suite and extending `profiling/profile.c` to benchmark the sbrk list allocator.
 10. Updating `sbrk_list_free` to lower the program break on tail reclaim with cascade until the list is empty or a live block is found; extending the test suite with two new tail-reclaim tests.
 11. Adding conditional mutex support (`src/sbrk_lock.h`) to both sbrk allocators; thread safety is enabled by default and can be disabled with `THREAD_SAFE=false`.
+12. Adding multi-threaded test suites (`test_sbrk_thread.c`, `test_sbrk_list_thread.c`) and multi-threaded profiling sections to `profiling/profile.c` for both sbrk allocators; generalising `worker_args_t` and `RUN_MT_ALL_ORDERS` to accept allocator function pointers.
 
 All generated code was reviewed, and Doxygen comments were audited and
 completed to ensure accuracy against the actual implementation.

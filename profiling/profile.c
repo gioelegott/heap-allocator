@@ -117,18 +117,23 @@ static double scenario_st(int iters, size_t size, free_order_t order,
 }
 
 /* ------------------------------------------------------------------ */
-/* Multi-threaded scenarios (mmap allocator only)                      */
+/* Multi-threaded scenarios                                             */
 /* ------------------------------------------------------------------ */
 
 /** @brief Argument bundle passed to each worker thread. */
 typedef struct {
-    int          iters; /**< Number of alloc/free cycles to perform.   */
-    size_t       size;  /**< Allocation size in bytes, or 0 for mixed. */
-    free_order_t order; /**< Free-order strategy.                      */
+    int          iters;    /**< Number of alloc/free cycles to perform.   */
+    size_t       size;     /**< Allocation size in bytes, or 0 for mixed. */
+    free_order_t order;    /**< Free-order strategy.                      */
+    alloc_fn_t   alloc_fn; /**< Allocator function to benchmark.          */
+    free_fn_t    free_fn;  /**< Deallocator matching alloc_fn.            */
 } worker_args_t;
 
 /**
- * @brief Thread worker mirroring scenario_st() using the mmap allocator.
+ * @brief Thread worker: mirrors scenario_st() using the allocator in @p arg.
+ *
+ * The pointer bookkeeping array is always allocated with the mmap-backed
+ * malloc so that it does not perturb the allocator under test.
  *
  * @param arg Pointer to a worker_args_t.
  * @return NULL always.
@@ -145,18 +150,18 @@ static void *mt_worker(void *arg)
 
     if (a->order == ORDER_INTERLEAVED) {
         for (int i = 0; i < a->iters; i++) {
-            void *p = malloc(a->size ? a->size : MIXED_SIZES[i % MIXED_N]);
-            free(p);
+            void *p = a->alloc_fn(a->size ? a->size : MIXED_SIZES[i % MIXED_N]);
+            a->free_fn(p);
         }
     } else {
         for (int i = 0; i < a->iters; i++)
-            ptrs[i] = malloc(a->size ? a->size : MIXED_SIZES[i % MIXED_N]);
+            ptrs[i] = a->alloc_fn(a->size ? a->size : MIXED_SIZES[i % MIXED_N]);
         if (a->order == ORDER_FIFO)
             for (int i = 0; i < a->iters; i++)
-                free(ptrs[i]);
+                a->free_fn(ptrs[i]);
         else
             for (int i = a->iters - 1; i >= 0; i--)
-                free(ptrs[i]);
+                a->free_fn(ptrs[i]);
     }
 
     free(ptrs);
@@ -164,17 +169,21 @@ static void *mt_worker(void *arg)
 }
 
 /**
- * @brief Spawn MT_THREADS workers and return elapsed wall-clock ms.
+ * @brief Spawn MT_THREADS workers using @p alloc_fn / @p free_fn and return
+ *        elapsed wall-clock milliseconds.
  *
- * @param iters  Iterations per thread.
- * @param size   Allocation size (0 = mixed).
- * @param order  Free-order strategy.
+ * @param iters     Iterations per thread.
+ * @param size      Allocation size (0 = mixed).
+ * @param order     Free-order strategy.
+ * @param alloc_fn  Allocator function to benchmark.
+ * @param free_fn   Deallocator matching @p alloc_fn.
  * @return Elapsed wall-clock time in milliseconds.
  */
-static double run_mt(int iters, size_t size, free_order_t order)
+static double run_mt(int iters, size_t size, free_order_t order,
+                     alloc_fn_t alloc_fn, free_fn_t free_fn)
 {
     pthread_t threads[MT_THREADS];
-    worker_args_t args = { iters, size, order };
+    worker_args_t args = { iters, size, order, alloc_fn, free_fn };
 
     prof_timer_t t;
     timer_start(&t);
@@ -215,15 +224,17 @@ static double run_mt(int iters, size_t size, free_order_t order)
  * @param iters         Iterations per thread.
  * @param size          Allocation size (0 = mixed).
  * @param total         Total operations (threads × iters).
+ * @param alloc_fn      Allocator to benchmark.
+ * @param free_fn       Matching deallocator.
  * @return void
  */
-#define RUN_MT_ALL_ORDERS(label_prefix, iters, size, total) do {          \
-    report(label_prefix " interleaved", (total),                          \
-           run_mt((iters), (size), ORDER_INTERLEAVED));                    \
-    report(label_prefix " FIFO",        (total),                          \
-           run_mt((iters), (size), ORDER_FIFO));                           \
-    report(label_prefix " LIFO",        (total),                          \
-           run_mt((iters), (size), ORDER_LIFO));                           \
+#define RUN_MT_ALL_ORDERS(label_prefix, iters, size, total, alloc_fn, free_fn) do { \
+    report(label_prefix " interleaved", (total),                               \
+           run_mt((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn));     \
+    report(label_prefix " FIFO",        (total),                               \
+           run_mt((iters), (size), ORDER_FIFO,        alloc_fn, free_fn));     \
+    report(label_prefix " LIFO",        (total),                               \
+           run_mt((iters), (size), ORDER_LIFO,        alloc_fn, free_fn));     \
 } while (0)
 
 int main(void)
@@ -245,11 +256,11 @@ int main(void)
     printf("\nmmap allocator — multi-threaded (%d threads x %d ops = %d total):\n\n",
            MT_THREADS, MT_ITERS, total_mt);
 
-    RUN_MT_ALL_ORDERS("mmap  MT  256 B",              MT_ITERS, 256,  total_mt); printf("\n");
-    RUN_MT_ALL_ORDERS("mmap  MT    4 KB",             MT_ITERS, 4096, total_mt); printf("\n");
-    RUN_MT_ALL_ORDERS("mmap  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt);
+    RUN_MT_ALL_ORDERS("mmap  MT  256 B",              MT_ITERS, 256,  total_mt, malloc, free); printf("\n");
+    RUN_MT_ALL_ORDERS("mmap  MT    4 KB",             MT_ITERS, 4096, total_mt, malloc, free); printf("\n");
+    RUN_MT_ALL_ORDERS("mmap  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt, malloc, free);
 
-    /* --- sbrk allocator: single-threaded only (not thread-safe) --- */
+    /* --- sbrk allocator: single-threaded --- */
     printf("\nsbrk allocator — single-threaded (%d ops each):\n\n", ITERS);
 
     RUN_ALL_ORDERS("sbrk  ST   16 B", ITERS, 16,         sbrk_malloc, sbrk_free); printf("\n");
@@ -258,7 +269,15 @@ int main(void)
     RUN_ALL_ORDERS("sbrk  ST    1 MB", ITERS, 1024*1024, sbrk_malloc, sbrk_free); printf("\n");
     RUN_ALL_ORDERS("sbrk  ST  mixed (16/128/1K/8K)", ITERS, 0, sbrk_malloc, sbrk_free);
 
-    /* --- sbrk list allocator: single-threaded only (not thread-safe) --- */
+    /* --- sbrk allocator: multi-threaded --- */
+    printf("\nsbrk allocator — multi-threaded (%d threads x %d ops = %d total):\n\n",
+           MT_THREADS, MT_ITERS, total_mt);
+
+    RUN_MT_ALL_ORDERS("sbrk  MT  256 B",              MT_ITERS, 256,  total_mt, sbrk_malloc, sbrk_free); printf("\n");
+    RUN_MT_ALL_ORDERS("sbrk  MT    4 KB",             MT_ITERS, 4096, total_mt, sbrk_malloc, sbrk_free); printf("\n");
+    RUN_MT_ALL_ORDERS("sbrk  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt, sbrk_malloc, sbrk_free);
+
+    /* --- sbrk list allocator: single-threaded --- */
     printf("\nsbrk list allocator — single-threaded (%d ops each):\n\n", ITERS);
 
     RUN_ALL_ORDERS("sbrk_list  ST   16 B", ITERS, 16,         sbrk_list_malloc, sbrk_list_free); printf("\n");
@@ -266,6 +285,14 @@ int main(void)
     RUN_ALL_ORDERS("sbrk_list  ST    4 KB", ITERS, 4096,      sbrk_list_malloc, sbrk_list_free); printf("\n");
     RUN_ALL_ORDERS("sbrk_list  ST    1 MB", ITERS, 1024*1024, sbrk_list_malloc, sbrk_list_free); printf("\n");
     RUN_ALL_ORDERS("sbrk_list  ST  mixed (16/128/1K/8K)", ITERS, 0, sbrk_list_malloc, sbrk_list_free);
+
+    /* --- sbrk list allocator: multi-threaded --- */
+    printf("\nsbrk list allocator — multi-threaded (%d threads x %d ops = %d total):\n\n",
+           MT_THREADS, MT_ITERS, total_mt);
+
+    RUN_MT_ALL_ORDERS("sbrk_list  MT  256 B",              MT_ITERS, 256,  total_mt, sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_MT_ALL_ORDERS("sbrk_list  MT    4 KB",             MT_ITERS, 4096, total_mt, sbrk_list_malloc, sbrk_list_free); printf("\n");
+    RUN_MT_ALL_ORDERS("sbrk_list  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt, sbrk_list_malloc, sbrk_list_free);
 
     printf("\nDone.\n");
     return 0;
