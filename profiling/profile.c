@@ -7,6 +7,7 @@
 #include "../include/allocator.h"
 #include "../include/sbrk_allocator.h"
 #include "../include/sbrk_list_allocator.h"
+#include "../include/opt_allocator.h"
 
 /* ------------------------------------------------------------------ */
 /* Configuration                                                        */
@@ -293,6 +294,23 @@ int main(void)
     RUN_MT_ALL_ORDERS("sbrk_list  MT  256 B",              MT_ITERS, 256,  total_mt, sbrk_list_malloc, sbrk_list_free); printf("\n");
     RUN_MT_ALL_ORDERS("sbrk_list  MT    4 KB",             MT_ITERS, 4096, total_mt, sbrk_list_malloc, sbrk_list_free); printf("\n");
     RUN_MT_ALL_ORDERS("sbrk_list  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt, sbrk_list_malloc, sbrk_list_free);
+
+    /* --- opt allocator: single-threaded --- */
+    printf("\nopt allocator — single-threaded (%d ops each):\n\n", ITERS);
+
+    RUN_ALL_ORDERS("opt  ST   16 B", ITERS, 16,         opt_malloc, opt_free); printf("\n");
+    RUN_ALL_ORDERS("opt  ST  256 B", ITERS, 256,        opt_malloc, opt_free); printf("\n");
+    RUN_ALL_ORDERS("opt  ST    4 KB", ITERS, 4096,      opt_malloc, opt_free); printf("\n");
+    RUN_ALL_ORDERS("opt  ST    1 MB", ITERS, 1024*1024, opt_malloc, opt_free); printf("\n");
+    RUN_ALL_ORDERS("opt  ST  mixed (16/128/1K/8K)", ITERS, 0, opt_malloc, opt_free);
+
+    /* --- opt allocator: multi-threaded --- */
+    printf("\nopt allocator — multi-threaded (%d threads x %d ops = %d total):\n\n",
+           MT_THREADS, MT_ITERS, total_mt);
+
+    RUN_MT_ALL_ORDERS("opt  MT  256 B",              MT_ITERS, 256,  total_mt, opt_malloc, opt_free); printf("\n");
+    RUN_MT_ALL_ORDERS("opt  MT    4 KB",             MT_ITERS, 4096, total_mt, opt_malloc, opt_free); printf("\n");
+    RUN_MT_ALL_ORDERS("opt  MT  mixed (16/128/1K/8K)", MT_ITERS, 0, total_mt, opt_malloc, opt_free);
 
     printf("\nDone.\n");
     return 0;

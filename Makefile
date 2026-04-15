@@ -22,15 +22,22 @@ SBRK_OBJ      = $(BUILD)/sbrk_allocator.o
 SBRK_LIST_SRC = src/sbrk_list_allocator.c
 SBRK_LIST_OBJ = $(BUILD)/sbrk_list_allocator.o
 
+OPT_SRC = src/opt_allocator.c
+OPT_OBJ = $(BUILD)/opt_allocator.o
+
 TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread \
           $(BUILD)/test_sbrk $(BUILD)/test_sbrk_thread \
           $(BUILD)/test_sbrk_list $(BUILD)/test_sbrk_list_thread
+
+# opt allocator tests are built separately; excluded from 'make test'
+# until the implementation is complete.
+OPT_TESTS = $(BUILD)/test_opt $(BUILD)/test_opt_thread
 CLIENT  = $(BUILD)/client
 PROFILE = $(BUILD)/profile
 
-.PHONY: all test profile clean
+.PHONY: all test test_opt profile clean
 
-all: $(CLIENT) $(SBRK_OBJ) $(SBRK_LIST_OBJ)
+all: $(CLIENT) $(SBRK_OBJ) $(SBRK_LIST_OBJ) $(OPT_OBJ)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -42,6 +49,9 @@ $(SBRK_OBJ): $(SBRK_SRC) src/block.h src/sbrk_lock.h include/sbrk_allocator.h | 
 	$(CC) $(SBRK_CFLAGS) -c $< -o $@
 
 $(SBRK_LIST_OBJ): $(SBRK_LIST_SRC) src/sbrk_lock.h include/sbrk_list_allocator.h | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) -c $< -o $@
+
+$(OPT_OBJ): $(OPT_SRC) src/sbrk_lock.h include/opt_allocator.h | $(BUILD)
 	$(CC) $(SBRK_CFLAGS) -c $< -o $@
 
 $(BUILD)/test_basic: tests/test_basic.c $(OBJ) | $(BUILD)
@@ -62,10 +72,16 @@ $(BUILD)/test_sbrk_list: tests/test_sbrk_list.c $(SBRK_LIST_OBJ) | $(BUILD)
 $(BUILD)/test_sbrk_list_thread: tests/test_sbrk_list_thread.c $(SBRK_LIST_OBJ) | $(BUILD)
 	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
 
+$(BUILD)/test_opt: tests/test_opt.c $(OPT_OBJ) | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
+
+$(BUILD)/test_opt_thread: tests/test_opt_thread.c $(OPT_OBJ) | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
+
 $(CLIENT): client/main.c $(OBJ) | $(BUILD)
 	$(CC) $(CFLAGS) $^ -o $@
 
-$(PROFILE): profiling/profile.c $(OBJ) $(SBRK_OBJ) $(SBRK_LIST_OBJ) | $(BUILD)
+$(PROFILE): profiling/profile.c $(OBJ) $(SBRK_OBJ) $(SBRK_LIST_OBJ) $(OPT_OBJ) | $(BUILD)
 	$(CC) $(SBRK_CFLAGS) $^ -o $@ -pthread $(SBRK_LDFLAGS)
 
 profile: $(PROFILE)
@@ -73,6 +89,12 @@ profile: $(PROFILE)
 
 test: $(TESTS)
 	@for t in $(TESTS); do \
+		echo "--- $$t ---"; \
+		$$t; \
+	done
+
+test_opt: $(OPT_TESTS)
+	@for t in $(OPT_TESTS); do \
 		echo "--- $$t ---"; \
 		$$t; \
 	done

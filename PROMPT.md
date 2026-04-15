@@ -38,3 +38,6 @@ Add a locking mechanism to both sbrk allocators for thread safety. You should ad
 
 ### 13. Multi-threaded tests and profiling for sbrk allocators
 Add the testing and profiling infrastructure for multi-threaded sbrk_allocator and sbrk_list_allocator. Use the infrastructure for testing and profiling the baseline allocator as a template.
+
+### 14. Optimal allocator template
+Generate a template for an optimal allocator and all the surrounding infrastructure, including testing and profiling. Leave the actual implementation empty.
