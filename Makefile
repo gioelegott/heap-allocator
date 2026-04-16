@@ -31,10 +31,11 @@ TESTS   = $(BUILD)/test_basic $(BUILD)/test_thread \
           $(BUILD)/test_opt $(BUILD)/test_opt_thread
 
 OPT_TESTS = $(BUILD)/test_opt $(BUILD)/test_opt_thread
-CLIENT  = $(BUILD)/client
-PROFILE = $(BUILD)/profile
+CLIENT      = $(BUILD)/client
+PROFILE     = $(BUILD)/profile
+PROFILE_MEM = $(BUILD)/profile_mem
 
-.PHONY: all test test_opt profile clean
+.PHONY: all test test_opt profile profile_mem clean
 
 all: $(CLIENT) $(SBRK_OBJ) $(SBRK_LIST_OBJ) $(OPT_OBJ)
 
@@ -83,8 +84,14 @@ $(CLIENT): client/main.c $(OBJ) | $(BUILD)
 $(PROFILE): profiling/profile.c $(OBJ) $(SBRK_OBJ) $(SBRK_LIST_OBJ) $(OPT_OBJ) | $(BUILD)
 	$(CC) $(SBRK_CFLAGS) $^ -o $@ -pthread $(SBRK_LDFLAGS)
 
+$(PROFILE_MEM): profiling/profile_mem.c $(SBRK_OBJ) $(SBRK_LIST_OBJ) $(OPT_OBJ) | $(BUILD)
+	$(CC) $(SBRK_CFLAGS) $^ -o $@ $(SBRK_LDFLAGS)
+
 profile: $(PROFILE)
 	$(PROFILE)
+
+profile_mem: $(PROFILE_MEM)
+	$(PROFILE_MEM)
 
 test: $(TESTS)
 	@for t in $(TESTS); do \

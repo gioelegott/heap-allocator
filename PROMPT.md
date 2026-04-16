@@ -44,3 +44,12 @@ Generate a template for an optimal allocator and all the surrounding infrastruct
 
 ### 15. Optimal allocator implementation
 Implement opt_malloc and opt_free as an implicit free-list allocator with first-fit search, on-the-fly forward coalescing of adjacent free blocks, block splitting, alignment rounding via _Alignof, and sbrk-backed heap extension. Add comments and format correctly.
+
+### 16. Memory-usage profiler
+Add profiling infrastructure for memory usage by querying sbrk. Test only sbrk-based allocators (sbrk_malloc, sbrk_list_malloc, opt_malloc) and only single-threaded. Put the memory profiler in a separate file.
+
+### 17. Memory-usage profiler scenarios
+Focus on one fixed-size case and one mixed-size case. For each test interleaved, FIFO, LIFO, cyclic FIFO, and cyclic LIFO free orders. Example of cyclic FIFO: a=malloc, b=malloc, c=malloc, free(a), free(b), free(c), a=malloc, b=malloc, ...
+
+### 18. Isolated memory-usage runs
+Make sure that all profiler runs are independent. Memory is expected to be clean at the start as well as sbrk to be reset.

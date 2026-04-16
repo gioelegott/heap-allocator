@@ -141,6 +141,7 @@ heap-allocator/
 │   └── main.c           # Minimal demo program
 ├── profiling/
 │   ├── profile.c        # Allocation/deallocation benchmark scenarios
+│   ├── profile_mem.c    # Memory-usage scenarios (sbrk-based allocators, single-threaded)
 │   └── timer.h          # Lightweight monotonic timer (prof_timer_t)
 ├── Makefile
 ├── PROMPT.md            # GenAI prompts used during development
@@ -158,8 +159,11 @@ make
 # Run the full test suite
 make test
 
-# Build and run the profiler
+# Build and run the timing profiler
 make profile
+
+# Build and run the memory-usage profiler (sbrk-based allocators only)
+make profile_mem
 
 # Build and run the opt allocator tests (also run by make test)
 make test_opt
