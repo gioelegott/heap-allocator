@@ -1,28 +1,17 @@
 # heap-allocator
 
-A minimal, thread-safe user-space `malloc`/`free` library written in C11 for
-Linux.  The implementation serves as a baseline: every allocation is backed by
-a dedicated `mmap` region rather than a free list, which makes the allocator
-trivially safe under concurrent use at the cost of not reusing freed memory.
+This project implements a thread-safe user-space `malloc`/`free` library written in C11 for
+Linux.  Several implementations are proposed and evaluated.
 
 ---
 
-## Project goal
+## Implementations
 
-Provide a drop-in replacement for the standard `malloc`/`free` pair that:
+### `malloc/free` (`src/allocator.c`)
 
-- compiles cleanly with `-std=c11 -Wall -Wextra`,
-- is safe to call from multiple POSIX threads simultaneously,
-- acquires memory from the OS exclusively via `mmap(2)`, and
-- releases memory immediately on `free()` via `munmap(2)`.
-
----
-
-## Data structures
-
-### `block_header_t` (`src/block.h`)
-
-Every allocation consists of one contiguous `mmap` region laid out as follows:
+This is the simplest implementation, where `malloc` and `free` map directly to the `mmap` and
+`munmap` system calls.  Every allocation consists of one contiguous `mmap` region laid out as
+follows:
 
 ```
 low address                          high address
@@ -44,74 +33,77 @@ mmap base                pointer returned by malloc()
 `free()` recovers the header by subtracting `sizeof(block_header_t)` from the
 caller's pointer, which gives it the exact byte count needed for `munmap`.
 
-### Free list
-
-This baseline implementation has **no free list**.  Each `malloc()` call
-allocates a fresh `mmap` region; each `free()` call immediately unmaps that
-region.  Memory is never reused across allocations.
+This implementation has **no free list**.  Each `malloc()` call allocates a fresh `mmap` region;
+each `free()` call immediately unmaps that region.  Memory is never reused across allocations.
 
 ---
 
-## Allocation policy
+### `sbrk_malloc/sbrk_free` (`src/sbrk_allocator.c`)
 
-| Property             | This implementation                               |
-|----------------------|---------------------------------------------------|
-| Policy               | None (every call is a fresh `mmap`)               |
-| OS acquisition       | `mmap(MAP_PRIVATE | MAP_ANONYMOUS)`               |
-| OS release           | `munmap` on every `free()`                        |
-| Free-list strategy   | None — no reuse of freed regions                  |
-| Alignment            | Page-aligned (inherited from `mmap`)              |
-| `malloc(0)` behavior | Returns `NULL`                                    |
-| `free(NULL)` behavior| No-op                                             |
+This is a very simple implementation that uses the program break to allocate new memory.  It
+uses memory very inefficiently: if a block is freed and is not at the top of the heap, it is
+abandoned and never reused.  While this makes it unsuitable for programs that use the heap
+intensively, it serves as an upper bound on performance for sbrk-based allocators.  Its simple
+logic means it outperforms the other sbrk allocators in every time-based benchmark.
+
+Like the mmap-based allocator, `sbrk_malloc` and `sbrk_free` use `block_header_t` (defined in
+`src/block.h`) to store the usable size of each allocation.
+
+---
+
+### `sbrk_list_malloc/sbrk_list_free` (`src/sbrk_list_allocator.c`)
+
+Given the poor memory efficiency of the simple sbrk allocator, this implementation keeps track
+of allocations with a singly-linked list.  Each node (`block_node_t`) stores a pointer to the
+next node, the usable size, and a free flag.  `sbrk_list_malloc()` performs a first-fit scan
+and reuses any sufficiently large free block without touching the program break.  If no suitable
+block is found, the heap is extended via `sbrk(2)`.  `sbrk_list_free()` marks the block free.
+If the freed block is at the tail of the list, it is unlinked and the program break is lowered
+via `sbrk(2)`; this reclaim cascades until a live block is reached or the list is empty.
+
+As expected, this implementation is much slower than the naive sbrk allocator: in the worst
+case, `malloc` needs O(N) operations to find a free block (where N is the number of allocated
+blocks), and `free` needs O(N²) operations to fully reset the program break via cascade reclaim.
+On the other hand, this implementation is much more memory-efficient, and it always returns zero
+residual memory (if all memory is freed, the program break is fully restored to its initial
+value).
+
+---
+
+### `opt_malloc/opt_free` (`src/opt_allocator.c`)
+
+This allocator is an optimisation of the sbrk_list allocator.  It uses an implicit free list,
+first-fit search, on-the-fly forward coalescing of adjacent free blocks, and block splitting.
+The free list and first-fit search are identical to the sbrk_list allocator, except that the
+pointer to the next block is implicit: it is computed from the current block's address and size,
+since all blocks are laid out contiguously in memory.
+
+Two additional features improve memory reuse:
+
+- **Block coalescing:** during the first-fit scan, `opt_malloc` merges adjacent free blocks
+  on-the-fly to reduce fragmentation and increase the chance of satisfying larger requests.
+- **Block splitting:** when a free block is larger than needed, only the required portion is
+  used; the remainder is returned to the free list as a new, smaller free block.
+
+`opt_free` uses the same tail-reclaim strategy as `sbrk_free`: if the freed block is at the
+top of the heap, the program break is lowered immediately.  Coalescing of non-tail free blocks
+is deferred lazily to the next `opt_malloc` scan.
 
 ---
 
 ## Thread safety
 
-`malloc()` and `free()` are fully thread-safe **without any mutex**.  Because
-each allocation is an independent `mmap` region and each `free()` unmaps only
-that region, there is no shared allocator state that threads could race on.
-The OS `mmap`/`munmap` syscalls are themselves thread-safe.
+`malloc()` and `free()` are fully thread-safe **without any mutex**.  Because each allocation
+is an independent `mmap` region and each `free()` unmaps only that region, there is no shared
+allocator state that threads could race on.  The OS `mmap`/`munmap` syscalls are themselves
+thread-safe.
 
-This is the key trade-off of the baseline design: thread safety comes for free,
-but at the cost of memory reuse and the overhead of a syscall per allocation.
-
-### `sbrk_malloc` / `sbrk_free`
-
-The sbrk-backed allocator (`include/sbrk_allocator.h`) is **thread-safe by
-default**: a static `pthread_mutex_t` guards every access to the program
-break.  Thread safety can be compiled out by passing `-DTHREAD_SAFE=0`
-(or `make THREAD_SAFE=false`) when lower overhead is acceptable at the
-cost of safety.  Its free strategy is also limited — `sbrk_free()` only
-lowers the program break when the freed block sits at the top of the heap;
-otherwise the memory is abandoned until the process exits.
-
-### `opt_malloc` / `opt_free`
-
-The optimised allocator (`include/opt_allocator.h`) is an implicit free-list
-allocator with first-fit search, on-the-fly forward coalescing of adjacent free
-blocks, and block splitting.  `opt_free()` lowers the program break immediately
-when the freed block is at the top of the heap; coalescing of non-tail free
-blocks is deferred lazily to the next `opt_malloc()` scan.  It is
-**thread-safe by default** (same conditional mutex pattern as the sbrk
-allocators) and can be compiled without locking via `-DTHREAD_SAFE=0` /
-`make THREAD_SAFE=false`.
-
-### `sbrk_list_malloc` / `sbrk_list_free`
-
-The sbrk list allocator (`include/sbrk_list_allocator.h`) improves on the
-simple sbrk allocator by maintaining a singly-linked list of all allocated
-blocks inside the heap itself.  Each node stores the usable size and a free
-flag.  `sbrk_list_malloc()` performs a first-fit scan and reuses any
-sufficiently large free block without touching the program break.  If no
-suitable block is found the heap is extended via `sbrk(2)`.
-`sbrk_list_free()` marks the block free.  If the freed block is at the tail
-of the list it is unlinked and the program break is lowered via `sbrk(2)`;
-this reclaim cascades until a live block is reached or the list is empty.
-Non-tail blocks remain in the list for first-fit reuse.  Like the simple
-sbrk allocator, this allocator is **thread-safe by default** (mutex on
-every access to the free list and program break) and can be compiled
-without locking via `-DTHREAD_SAFE=0` / `make THREAD_SAFE=false`.
+All other implementations use a `pthread_mutex` for thread safety, which can be disabled with
+`-DTHREAD_SAFE=0` / `make THREAD_SAFE=false`.  Each function is almost entirely wrapped in the
+mutex to prevent data races.  More fine-grained approaches may be possible but are considerably
+more complex given the shared data structures of the list-based designs.  This is a notable
+limitation of sbrk-based implementations, suggesting that mmap-based allocators may scale
+better for multi-threaded applications.
 
 ---
 
@@ -175,8 +167,7 @@ make test_opt
 make clean
 ```
 
-Build output is placed in the `build/` directory.  The Makefile requires GCC
-and is tested on Ubuntu/Linux (kernel 5.x or later).
+Build output is placed in the `build/` directory.
 
 ---
 
@@ -199,7 +190,7 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 
 This project was developed with the assistance of an AI coding assistant
 (Claude, Anthropic).  The exact prompts used are recorded in
-[PROMPT.md](PROMPT.md).
+[PROMPT.md](PROMPT.md) (only the main prompts are recorded for clarity).
 
 Prompts covered the following areas:
 
