@@ -90,9 +90,12 @@ otherwise the memory is abandoned until the process exits.
 
 The optimised allocator (`include/opt_allocator.h`) is an implicit free-list
 allocator with first-fit search, on-the-fly forward coalescing of adjacent free
-blocks, and block splitting.  It is **thread-safe by default** (same conditional
-mutex pattern as the sbrk allocators) and can be compiled without locking via
-`-DTHREAD_SAFE=0` / `make THREAD_SAFE=false`.
+blocks, and block splitting.  `opt_free()` lowers the program break immediately
+when the freed block is at the top of the heap; coalescing of non-tail free
+blocks is deferred lazily to the next `opt_malloc()` scan.  It is
+**thread-safe by default** (same conditional mutex pattern as the sbrk
+allocators) and can be compiled without locking via `-DTHREAD_SAFE=0` /
+`make THREAD_SAFE=false`.
 
 ### `sbrk_list_malloc` / `sbrk_list_free`
 
@@ -187,7 +190,7 @@ and is tested on Ubuntu/Linux (kernel 5.x or later).
 | `build/test_sbrk_thread`     | 8 threads each perform 64 `sbrk_malloc`/write/verify/`sbrk_free` cycles concurrently without data corruption |
 | `build/test_sbrk_list`       | `sbrk_list_malloc` returns non-NULL; `sbrk_list_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `sbrk_list_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation; a non-top freed block is reused (FIFO); a larger freed block satisfies a smaller request (first-fit); freeing the tail block lowers the program break; cascade reclaim of consecutive free tail blocks fully restores the break |
 | `build/test_sbrk_list_thread`| 8 threads each perform 64 `sbrk_list_malloc`/write/verify/`sbrk_list_free` cycles concurrently without data corruption; exercises the shared free list under concurrent access |
-| `build/test_opt`             | `opt_malloc` returns non-NULL; `opt_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `opt_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused by the next same-size allocation |
+| `build/test_opt`             | `opt_malloc` returns non-NULL; `opt_malloc(0)` returns NULL; memory is writable; two live allocations return distinct pointers; `opt_free(NULL)` is a no-op; a 1 MiB allocation succeeds; a freed block is reused without heap growth (`sbrk(0)` does not advance after re-allocation) |
 | `build/test_opt_thread`      | 8 threads each perform 64 `opt_malloc`/write/verify/`opt_free` cycles concurrently without data corruption |
 
 ---

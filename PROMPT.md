@@ -53,3 +53,6 @@ Focus on one fixed-size case and one mixed-size case. For each test interleaved,
 
 ### 18. Isolated memory-usage runs
 Make sure that all profiler runs are independent. Memory is expected to be clean at the start as well as sbrk to be reset.
+
+### 19. opt_free tail reclaim
+Make it so that opt_free modifies sbrk similarly to the sbrk_allocator: lower the program break when the freed block is at the top of the heap. Fix the split tail-trim bug (hdr->size not updated). Update the reuse test to use sbrk(0)-based assertion instead of pointer equality.

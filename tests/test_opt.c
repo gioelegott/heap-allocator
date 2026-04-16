@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 #include "opt_allocator.h"
 
 /**
@@ -82,8 +83,9 @@ static void test_opt_malloc_large(void)
  * @brief Verify that a freed block is reused by the next same-size allocation.
  *
  * Allocates two blocks (first and sentinel), frees first, then allocates
- * again with the same size. The second allocation must return the same
- * pointer as first (free-list reuse, not a fresh region).
+ * again with the same size.  The sentinel prevents first from being reclaimed
+ * as a tail block.  Reuse is confirmed by checking that the program break did
+ * not advance after the second allocation (no new sbrk extension was needed).
  */
 static void test_opt_free_reuses_block(void)
 {
@@ -93,8 +95,12 @@ static void test_opt_free_reuses_block(void)
 
     opt_free(first);
 
+    void *break_before = sbrk(0);
     void *second = opt_malloc(64);
-    assert(second == first);
+    assert(second != NULL);
+    /* Heap must not have grown: second came from the freed block, not sbrk. */
+    assert(sbrk(0) == break_before);
+    printf("Allocated first block at %p, second block at %p\n", first, second);
 
     opt_free(second);
     opt_free(sentinel);

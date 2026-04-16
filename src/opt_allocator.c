@@ -132,8 +132,9 @@ void *opt_malloc(size_t size)
 /**
  * @brief Free a previously allocated block.
  *
- * Marks the block as free so it can be reused by a future opt_malloc() call.
- * Deferred coalescing is performed lazily during the next opt_malloc() search.
+ * Marks the block as free for future reuse.  If the block sits at the top
+ * of the heap the program break is lowered immediately via sbrk(2).
+ * Coalescing of non-tail free blocks is performed lazily by opt_malloc().
  *
  * @param ptr Pointer previously returned by opt_malloc(). If NULL, no-op.
  * @return void
@@ -149,6 +150,11 @@ void opt_free(void *ptr)
 
     block_header_t *hdr = (block_header_t *)ptr - 1;
     hdr->free = 1;
+
+    /* If this block is at the top of the heap, lower the program break. */
+    size_t total = sizeof(block_header_t) + hdr->size;
+    if ((char *)hdr + total == (char *)sbrk(0))
+        sbrk(-(intptr_t)total);
 
     SBRK_UNLOCK();
 }
