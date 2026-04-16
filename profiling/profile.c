@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <sys/wait.h>
 #include "timer.h"
 #include "../include/allocator.h"
 #include "../include/sbrk_allocator.h"
@@ -196,6 +197,84 @@ static double run_mt(int iters, size_t size, free_order_t order,
 }
 
 /* ------------------------------------------------------------------ */
+/* Isolation via fork                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Run scenario_st() in an isolated child process.
+ *
+ * fork() gives the child a private copy of the address space so every
+ * allocator's static state and the program break are pristine on entry,
+ * independent of any previously run scenario.  The elapsed time (a double)
+ * is written to a pipe and read back by the parent.
+ *
+ * @param iters     Number of alloc/free pairs.
+ * @param size      Bytes per allocation, or 0 for mixed sizes.
+ * @param order     Free-order strategy.
+ * @param alloc_fn  Allocator function to benchmark.
+ * @param free_fn   Deallocator matching @p alloc_fn.
+ * @return Elapsed time in milliseconds as measured in the child.
+ */
+static double run_isolated_st(int iters, size_t size, free_order_t order,
+                               alloc_fn_t alloc_fn, free_fn_t free_fn)
+{
+    int fds[2];
+    if (pipe(fds) == -1) return -1.0;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(fds[0]);
+        double ms = scenario_st(iters, size, order, alloc_fn, free_fn);
+        (void)!write(fds[1], &ms, sizeof ms);
+        close(fds[1]);
+        _exit(0);
+    }
+
+    close(fds[1]);
+    double ms = -1.0;
+    (void)!read(fds[0], &ms, sizeof ms);
+    close(fds[0]);
+    waitpid(pid, NULL, 0);
+    return ms;
+}
+
+/**
+ * @brief Run run_mt() in an isolated child process.
+ *
+ * The child spawns the worker threads internally.  The elapsed wall-clock
+ * time is piped back to the parent.
+ *
+ * @param iters     Iterations per thread.
+ * @param size      Allocation size (0 = mixed).
+ * @param order     Free-order strategy.
+ * @param alloc_fn  Allocator function to benchmark.
+ * @param free_fn   Deallocator matching @p alloc_fn.
+ * @return Elapsed wall-clock time in milliseconds as measured in the child.
+ */
+static double run_isolated_mt(int iters, size_t size, free_order_t order,
+                               alloc_fn_t alloc_fn, free_fn_t free_fn)
+{
+    int fds[2];
+    if (pipe(fds) == -1) return -1.0;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(fds[0]);
+        double ms = run_mt(iters, size, order, alloc_fn, free_fn);
+        (void)!write(fds[1], &ms, sizeof ms);
+        close(fds[1]);
+        _exit(0);
+    }
+
+    close(fds[1]);
+    double ms = -1.0;
+    (void)!read(fds[0], &ms, sizeof ms);
+    close(fds[0]);
+    waitpid(pid, NULL, 0);
+    return ms;
+}
+
+/* ------------------------------------------------------------------ */
 /* main                                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -211,11 +290,11 @@ static double run_mt(int iters, size_t size, free_order_t order,
  */
 #define RUN_ALL_ORDERS(label_prefix, iters, size, alloc_fn, free_fn) do { \
     report(label_prefix " interleaved", (iters),                          \
-           scenario_st((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn)); \
+           run_isolated_st((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn)); \
     report(label_prefix " FIFO", (iters),                                 \
-           scenario_st((iters), (size), ORDER_FIFO,        alloc_fn, free_fn)); \
+           run_isolated_st((iters), (size), ORDER_FIFO,        alloc_fn, free_fn)); \
     report(label_prefix " LIFO", (iters),                                 \
-           scenario_st((iters), (size), ORDER_LIFO,        alloc_fn, free_fn)); \
+           run_isolated_st((iters), (size), ORDER_LIFO,        alloc_fn, free_fn)); \
 } while (0)
 
 /**
@@ -230,12 +309,12 @@ static double run_mt(int iters, size_t size, free_order_t order,
  * @return void
  */
 #define RUN_MT_ALL_ORDERS(label_prefix, iters, size, total, alloc_fn, free_fn) do { \
-    report(label_prefix " interleaved", (total),                               \
-           run_mt((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn));     \
-    report(label_prefix " FIFO",        (total),                               \
-           run_mt((iters), (size), ORDER_FIFO,        alloc_fn, free_fn));     \
-    report(label_prefix " LIFO",        (total),                               \
-           run_mt((iters), (size), ORDER_LIFO,        alloc_fn, free_fn));     \
+    report(label_prefix " interleaved", (total),                                    \
+           run_isolated_mt((iters), (size), ORDER_INTERLEAVED, alloc_fn, free_fn)); \
+    report(label_prefix " FIFO",        (total),                                    \
+           run_isolated_mt((iters), (size), ORDER_FIFO,        alloc_fn, free_fn)); \
+    report(label_prefix " LIFO",        (total),                                    \
+           run_isolated_mt((iters), (size), ORDER_LIFO,        alloc_fn, free_fn)); \
 } while (0)
 
 int main(void)
